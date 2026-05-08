@@ -1,0 +1,8 @@
+.analysis
+.git
+.venv
+.env
+__pycache__
+*.pyc
+sources
+README.local.md

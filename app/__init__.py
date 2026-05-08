@@ -1,0 +1,1 @@
+"""Diploma prototype application package."""

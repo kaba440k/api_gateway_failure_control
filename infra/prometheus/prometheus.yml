@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: envoy
+    metrics_path: /stats/prometheus
+    static_configs:
+      - targets: ["envoy:9901"]
+
+  - job_name: control-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["control-api:8000"]
+
+  - job_name: services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - orders-service:8000
+          - payments-service:8000
+          - unstable-service:8000

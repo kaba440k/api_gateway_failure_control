@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Контроль сбоев API-шлюза</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>Контроль сбоев API-шлюза</h1>
+          <p>Envoy · FastAPI · PostgreSQL · Redis · Prometheus · Grafana</p>
+        </div>
+        <div class="links">
+          <a href="http://localhost:9901/" target="_blank">Envoy admin</a>
+          <a href="http://localhost:9090/targets" target="_blank">Prometheus targets</a>
+          <a
+            href="http://localhost:3000/d/failure-control/api-gateway-failure-control?orgId=1&amp;refresh=5s"
+            target="_blank"
+          >
+            Grafana dashboard
+          </a>
+        </div>
+      </section>
+
+      <section class="status-grid">
+        <article class="panel state-panel">
+          <span class="label">Circuit Breaker</span>
+          <strong id="breakerState">...</strong>
+          <span id="breakerMeta">загрузка</span>
+        </article>
+        <article class="panel">
+          <span class="label">Fault Injection</span>
+          <strong id="faultState">...</strong>
+          <span id="faultMeta">загрузка</span>
+        </article>
+        <article class="panel">
+          <span class="label">Последний protected call</span>
+          <strong id="lastStatus">...</strong>
+          <span id="lastMeta">трафика пока нет</span>
+        </article>
+        <article class="panel">
+          <span class="label">События за период</span>
+          <strong id="eventStats">0 / 0</strong>
+          <span id="eventStatsMeta">успехи / отказы</span>
+        </article>
+      </section>
+
+      <section class="panel flow-panel" aria-label="Схема обработки запроса">
+        <div class="panel-title">
+          <div>
+            <span class="label">Схема обработки запроса</span>
+            <h2>Как API-шлюз реагирует на сбой</h2>
+          </div>
+          <span id="flowStatus" class="flow-status">Ожидание запроса</span>
+        </div>
+
+        <div class="flow-map">
+          <div class="flow-row main-flow">
+            <div class="flow-node" id="nodeClient">
+              <span>Клиент</span>
+              <strong>Frontend</strong>
+            </div>
+            <div class="flow-edge" id="edgeClientGateway"><span></span></div>
+            <div class="flow-node" id="nodeGateway">
+              <span>API-шлюз</span>
+              <strong>Envoy</strong>
+            </div>
+            <div class="flow-edge" id="edgeGatewayControl"><span></span></div>
+            <div class="flow-node" id="nodeControl">
+              <span>Контроль</span>
+              <strong>FastAPI</strong>
+            </div>
+            <div class="flow-edge" id="edgeControlBreaker"><span></span></div>
+            <div class="flow-node breaker-node" id="nodeBreaker">
+              <span>Circuit Breaker</span>
+              <strong id="flowBreakerState">...</strong>
+            </div>
+            <div class="flow-edge" id="edgeBreakerService"><span></span></div>
+            <div class="flow-node service-node" id="nodeService">
+              <span>Целевой сервис</span>
+              <strong>unstable-service</strong>
+            </div>
+          </div>
+
+          <div class="flow-row support-flow">
+            <div class="flow-node muted-node">
+              <span>Состояние breaker</span>
+              <strong>Redis</strong>
+            </div>
+            <div class="flow-node muted-node">
+              <span>Журнал событий</span>
+              <strong>PostgreSQL</strong>
+            </div>
+            <div class="retry-strip" aria-label="Circuit Breaker failure threshold">
+              <span class="label">Порог Circuit Breaker</span>
+              <div class="retry-dots">
+                <span id="retryOne">1</span>
+                <span id="retryTwo">2</span>
+                <span id="retryThree">3</span>
+              </div>
+              <small id="retryMeta">Зеленые - запас до OPEN, красные - накопленные ошибки</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workbench">
+        <div class="toolbar">
+          <button id="runScenario">Запустить сценарий сбоя</button>
+          <button id="sendProtected">Protected call</button>
+          <button id="sendDirect">Прямой вызов через Envoy</button>
+          <button id="enableFault">Включить сбой</button>
+          <button id="disableFault">Отключить сбой</button>
+          <button id="resetCircuit">Сбросить breaker</button>
+        </div>
+
+        <div class="output-grid">
+          <article class="panel">
+            <div class="panel-title">
+              <h2>Ответ API</h2>
+            </div>
+            <pre id="responseBox">{}</pre>
+          </article>
+          <article class="panel">
+            <div class="panel-title">
+              <h2>Последние события</h2>
+              <button id="refreshEvents" class="small">Обновить</button>
+            </div>
+            <div id="events" class="events"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
