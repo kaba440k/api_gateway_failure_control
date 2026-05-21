@@ -11,6 +11,8 @@ const eventTitles = {
   fault_configured: "Параметры сбоя изменены",
   direct_gateway_success: "Прямой Envoy-вызов успешен",
   direct_gateway_failed: "Прямой Envoy-вызов получил отказ upstream",
+  stable_gateway_success: "Стабильный сервис ответил через Envoy",
+  stable_gateway_failed: "Стабильный сервис вернул ошибку",
 };
 const retryNodes = ["retryOne", "retryTwo", "retryThree"];
 const flowNodeIds = ["nodeClient", "nodeGateway", "nodeControl", "nodeBreaker", "nodeService"];
@@ -64,7 +66,13 @@ function renderBreakerOnFlow(state) {
   $("flowBreakerState").textContent = state;
 }
 
+function setTargetServiceLabel(serviceName) {
+  const serviceLabel = document.querySelector("#nodeService strong");
+  if (serviceLabel) serviceLabel.textContent = serviceName;
+}
+
 function renderProtectedFlow(payload) {
+  setTargetServiceLabel("unstable-service");
   resetFlowActivity();
   ["nodeClient", "nodeGateway", "nodeControl", "nodeBreaker"].forEach((id) =>
     $(id).classList.add("active"),
@@ -93,6 +101,7 @@ function renderProtectedFlow(payload) {
 }
 
 function renderDirectFlow(payload) {
+  setTargetServiceLabel("unstable-service");
   resetFlowActivity();
   ["nodeClient", "nodeGateway", "nodeService"].forEach((id) => $(id).classList.add("active"));
   ["nodeControl", "nodeBreaker"].forEach((id) => $(id).classList.add("bypassed"));
@@ -111,17 +120,55 @@ function renderDirectFlow(payload) {
   );
 }
 
-function rememberDirectGatewayEvent(payload) {
+function renderStableRoutingFlow(serviceName, payload) {
+  setTargetServiceLabel(serviceName);
+  resetFlowActivity();
+  ["nodeClient", "nodeGateway", "nodeService"].forEach((id) => $(id).classList.add("active"));
+  ["nodeControl", "nodeBreaker"].forEach((id) => $(id).classList.add("bypassed"));
+  $("edgeClientGateway").classList.add("active");
+  const retryMeta = $("retryMeta");
+  if (retryMeta) {
+    retryMeta.textContent =
+      "Обычные маршруты Envoy не используют прикладной Circuit Breaker из control-api";
+  }
+  setFlowStatus(
+    payload.ok
+      ? `Обычная маршрутизация: Envoy направил запрос в ${serviceName}`
+      : `Обычная маршрутизация: ${serviceName} вернул HTTP ${payload.status_code}`,
+    payload.ok ? "ok" : "danger",
+  );
+}
+
+function rememberGatewayEvent({ service, eventType, payload, note }) {
   localGatewayEvents.unshift({
-    id: `direct-${Date.now()}`,
+    id: `gateway-${Date.now()}-${service}`,
     created_at: new Date().toISOString(),
-    service: "unstable-service",
-    event_type: payload.ok ? "direct_gateway_success" : "direct_gateway_failed",
+    service,
+    event_type: eventType,
     status_code: payload.status_code,
     breaker_state: "BYPASS",
+    note,
     local: true,
   });
-  localGatewayEvents.splice(5);
+  localGatewayEvents.splice(8);
+}
+
+function rememberDirectGatewayEvent(payload) {
+  rememberGatewayEvent({
+    service: "unstable-service",
+    eventType: payload.ok ? "direct_gateway_success" : "direct_gateway_failed",
+    payload,
+    note: "Маршрут идет напрямую через Envoy, поэтому это событие не пишется в PostgreSQL control-api.",
+  });
+}
+
+function rememberStableGatewayEvent(serviceName, payload) {
+  rememberGatewayEvent({
+    service: serviceName,
+    eventType: payload.ok ? "stable_gateway_success" : "stable_gateway_failed",
+    payload,
+    note: "Обычный маршрут API-шлюза к стабильному сервису; control-api и Circuit Breaker не участвуют.",
+  });
 }
 
 async function request(path, options = {}) {
@@ -228,13 +275,15 @@ function eventClass(event) {
   const classes = ["event"];
   if (event.local) classes.push("local-event");
   if (event.event_type === "circuit_rejected") classes.push("rejected-event");
-  if (event.event_type === "request_failed") classes.push("failed-event");
+  if (["request_failed", "direct_gateway_failed", "stable_gateway_failed"].includes(event.event_type)) {
+    classes.push("failed-event");
+  }
   return classes.join(" ");
 }
 
 function eventNote(event) {
   if (event.local) {
-    return "<small>Маршрут идет напрямую через Envoy, поэтому это событие не пишется в PostgreSQL control-api.</small>";
+    return `<small>${event.note}</small>`;
   }
   if (event.event_type === "circuit_rejected") {
     return "<small>Событие записано control-api в PostgreSQL: Circuit Breaker остановил запрос до обращения к unstable-service.</small>";
@@ -246,9 +295,15 @@ function eventNote(event) {
 }
 
 function updateEventStats(events) {
-  const success = events.filter((event) => event.event_type === "request_success").length;
+  const success = events.filter((event) =>
+    ["request_success", "direct_gateway_success", "stable_gateway_success"].includes(
+      event.event_type,
+    ),
+  ).length;
   const failures = events.filter((event) =>
-    ["request_failed", "circuit_rejected", "direct_gateway_failed"].includes(event.event_type),
+    ["request_failed", "circuit_rejected", "direct_gateway_failed", "stable_gateway_failed"].includes(
+      event.event_type,
+    ),
   ).length;
   $("eventStats").textContent = `${success} / ${failures}`;
   $("eventStatsMeta").textContent = "успехи / отказы";
@@ -286,6 +341,16 @@ async function protectedCall() {
   return payload;
 }
 
+async function stableServiceCall(path, serviceName) {
+  const payload = await request(path, { allowError: true });
+  $("lastStatus").textContent = payload.ok ? "Успех" : "Отказ";
+  $("lastStatus").className = payload.ok ? "ok" : "danger";
+  $("lastMeta").textContent = `Обычный маршрут Envoy, HTTP ${payload.status_code}`;
+  rememberStableGatewayEvent(serviceName, payload);
+  renderStableRoutingFlow(serviceName, payload);
+  return payload;
+}
+
 $("sendProtected").addEventListener("click", async () => {
   await runAction(async () => protectedCall());
 });
@@ -300,6 +365,14 @@ $("sendDirect").addEventListener("click", async () => {
     renderDirectFlow(payload);
     return payload;
   });
+});
+
+$("sendOrders").addEventListener("click", async () => {
+  await runAction(async () => stableServiceCall("/api/orders", "orders-service"));
+});
+
+$("sendPayments").addEventListener("click", async () => {
+  await runAction(async () => stableServiceCall("/api/payments", "payments-service"));
 });
 
 $("enableFault").addEventListener("click", async () => {

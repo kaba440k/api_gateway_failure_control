@@ -151,6 +151,30 @@ button:active {
   padding: 12px;
 }
 
+.routing-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.routing-panel p {
+  color: var(--muted);
+  margin-top: 4px;
+  max-width: 680px;
+}
+
+.service-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .output-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -409,6 +433,15 @@ pre {
   .main-flow,
   .support-flow {
     grid-template-columns: 1fr;
+  }
+
+  .routing-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .service-actions {
+    justify-content: flex-start;
   }
 
   .flow-edge {

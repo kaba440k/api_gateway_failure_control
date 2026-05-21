@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Контроль сбоев API-шлюза</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -115,6 +116,20 @@
           <button id="enableFault">Включить сбой</button>
           <button id="disableFault">Отключить сбой</button>
           <button id="resetCircuit">Сбросить breaker</button>
+        </div>
+
+        <div class="routing-panel">
+          <div>
+            <span class="label">Обычная маршрутизация через Envoy</span>
+            <p>
+              Стабильные сервисы проходят через API-шлюз напрямую, без control-api,
+              Retry и Circuit Breaker.
+            </p>
+          </div>
+          <div class="service-actions">
+            <button id="sendOrders">Orders service</button>
+            <button id="sendPayments">Payments service</button>
+          </div>
         </div>
 
         <div class="output-grid">
